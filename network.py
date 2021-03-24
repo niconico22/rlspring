@@ -6,45 +6,62 @@ import buffer
 from time import time
 from abc import ABC, abstractmethod
 
-def calculate_log_pi( log_stds , noises, actions):
-    '''gaussian_log_probs = (-0.5* noises.pow(2) - log_stds).sum(dim=-1, keepdim=True)\
+import logging 
+import datetime
+
+def set_log(s):
+    # ログレベルを DEBUG に変更
+    now = datetime.datetime.now()
+    filename = './' + s + 'log/' + 'log_' + \
+        now.strftime('%Y%m%d_%H%M%S') + '.log'
+    
+    formatter = '%(levelname)s : %(asctime)s : %(message)s'
+
+    logging.basicConfig(filename=filename,
+                        level=logging.DEBUG, format=formatter)
+
+
+
+
+
+n_models = 5
+H_steps = 1
+
+def predict_next_state_and_reward(state, action, ensemble_models, device):
+    state = torch.from_numpy(state).float().to(device)
+    state = state.unsqueeze_(0)
+    action = torch.from_numpy(action).float().to(device)
+    action = action.unsqueeze_(0)
+    idx = np.random.randint(0, n_models)
+    mu, var = ensemble_models[idx](state, action)
+    mu_r, var_r = ensemble_models[idx].reward_model(state, action)
+    next_state = ensemble_models[idx].predict(mu, var)
+    reward = ensemble_models[idx].reward_model.predict(mu_r, var_r)
+    return next_state, reward
+
+
+
+
+def caluculate_log_pi( log_stds , noises, actions):
+    gaussian_log_probs = (-0.5* noises.pow(2) - log_stds).sum(dim=-1, keepdim=True)\
         -0.5*math.log(2*math.pi)*log_stds.size(-1)
     log_pis = gaussian_log_probs - torch.log(1 - actions.pow(2) + 1e-6 ).sum(dim=-1, keepdim =True)
 
-    return log_pis'''
-    # ガウス分布 `N(0, stds * I)` における `noises * stds` の確率密度の対数(= \log \pi(u|a))を計算する．
-    # (torch.distributions.Normalを使うと無駄な計算が生じるので，下記では直接計算しています．)
-    gaussian_log_probs = (-0.5 * noises.pow(2) - log_stds).sum(dim=-1, keepdim=True) - 0.5 * math.log(2 * math.pi) * log_stds.size(-1)
-    # tanh による確率密度の変化を修正する．
-    
-    log_pis = gaussian_log_probs - torch.log(1 - actions.pow(2) + 1e-6).sum(dim=-1, keepdim=True)
     return log_pis
+    
 
 def reparameterize(means, log_stds):
-    '''stds = log_stds.exp()
+    stds = log_stds.exp()
     noises = torch.randn_like(means)
     us = means + stds*noises
     actions = torch.tanh(us)
-    log_pis = self.caluculate_log_pi(log_stds, noises, actions)
-    return actions, log_pis'''
-    """ Reparameterization Trickを用いて，確率論的な行動とその確率密度を返す． """
-    # 標準偏差．
-    stds = log_stds.exp()
-    # 標準ガウス分布から，ノイズをサンプリングする．
-    noises = torch.randn_like(means)
-    # Reparameterization Trickを用いて，N(means, stds)からのサンプルを計算する．
-    us = means + noises * stds
-    # tanh　を適用し，確率論的な行動を計算する．
-    actions = torch.tanh(us)
-    #print(actions[0])
-    # 確率論的な行動の確率密度の対数を計算する．
-    log_pis = calculate_log_pi(log_stds, noises, actions)
-
+    log_pis = caluculate_log_pi(log_stds, noises, actions)
     return actions, log_pis
+    
 
 
 class Critic_network(nn.Module):
-    '''def __init__(self,state_shape,action_shape):
+    def __init__(self,state_shape,action_shape):
         super().__init__()
         self.fc1 = nn.Linear(state_shape[0]+ action_shape[0], 256 )
         self.fc2 = nn.Linear(256,256)
@@ -72,32 +89,12 @@ class Critic_network(nn.Module):
         
         q2 = self.net2(torch.cat([states, actions] , dim = -1))
         
-        return q1, q2'''
-    def __init__(self, state_shape, action_shape):
-        super().__init__()
-
-        self.net1 = nn.Sequential(
-            nn.Linear(state_shape[0] + action_shape[0], 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 1),
-        )
-        self.net2 = nn.Sequential(
-            nn.Linear(state_shape[0] + action_shape[0], 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 1),
-        )
-
-    def forward(self, states, actions):
-        x = torch.cat([states, actions], dim=-1)
-        return self.net1(x), self.net2(x)
+        return q1, q2
+    
     
 
 class Actor_network(nn.Module):
-    '''def __init__(self,state_shape, action_shape):
+    def __init__(self,state_shape, action_shape):
         super().__init__()
 
         self.fc1 = nn.Linear(state_shape[0], 256 )
@@ -115,25 +112,9 @@ class Actor_network(nn.Module):
 
     def sample(self,states):
         means, log_stds = self.net(states).chunk(2,dim=-1)
-        return self.reparameterize(means, log_stds.clamp(-20, 2))'''
-    
-    def __init__(self, state_shape, action_shape):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Linear(state_shape[0], 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 2 * action_shape[0]),
-        )
-
-    def forward(self, states):
-        return torch.tanh(self.net(states).chunk(2, dim=-1)[0])
-
-    def sample(self, states):
-        means, log_stds = self.net(states).chunk(2, dim=-1)
         return reparameterize(means, log_stds.clamp(-20, 2))
+    
+    
 
 class Algorithm(ABC):
 
@@ -171,14 +152,14 @@ class Algorithm(ABC):
         
 
 class SAC(Algorithm):
-    def __init__(self, state_shape, action_shape, device, seed = 0,
-                batch_size=256, gamma = 0.99 , lr=3e-4,alpha = 0.2, buff_size = 10**6, start_steps =10**4, tau =5e-3, reward_scale = 1.0):
+    def __init__(self, state_shape, action_shape,  device, ensemble_models = None, seed = 0,
+                batch_size=256, gamma = 0.99 , lr=3e-4,alpha = 0.2, buff_size = 10**6, start_steps =2*10**3, tau =5e-3, reward_scale = 1.0):
         super().__init__()
 
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
-
+        
         self.replay_buffer = buffer.ReplayBuffer(buff_size=buff_size, state_shape=state_shape, action_shape = action_shape, device = device)
         self.actor = Actor_network(state_shape = state_shape, action_shape = action_shape).to(device)
         self.critic = Critic_network(state_shape = state_shape, action_shape = action_shape).to(device)
@@ -201,14 +182,38 @@ class SAC(Algorithm):
         self.tau = tau 
         self.alpha = alpha
         self.reward_scale =reward_scale
+        self.ensemble_models = ensemble_models
 
     def is_update(self, steps):
         return steps >= max(self.start_steps, self.batch_size)
     
     def update(self):
+        #print(self.learning_steps)
         self.learning_steps += 1
-        states, actions, next_states, rewards, dones = self.replay_buffer.sample_buffer(self.batch_size)
+        #states, actions, next_states, rewards, dones = self.replay_buffer.sample_buffer(self.batch_size)
+        #modelからデータを生成
+        model_buffer = self.generate_data(self.replay_buffer)
+        #real and model data　のサンプルを取る
+        sz = np.random.randint(low = 0 , high = self.replay_buffer.n + model_buffer.n , size = self.batch_size)
+        real_batch_size = np.sum(sz < self.replay_buffer.n)
+        model_batch_size = self.batch_size - real_batch_size
+        states, actions, next_states, rewards, dones = self.replay_buffer.sample_buffer(real_batch_size)
+        model_states, model_actions, model_next_states, model_rewards, model_dones = model_buffer.sample_buffer(model_batch_size)
+        
+        states = torch.cat([states, model_states] , dim = 0 )
+        actions = torch.cat([actions, model_actions] , dim = 0)
+        next_states = torch.cat([next_states, model_next_states] , dim = 0 )
+        rewards = torch.cat([rewards , model_rewards], dim = 0)
+        dones = torch.cat([dones, model_dones] , dim = 0)
 
+        self.update_critic(states, actions, rewards, dones, next_states)
+        self.update_actor(states)
+        self.update_target()
+
+
+    def update_sac(self):
+        states, actions, next_states, rewards, dones = self.replay_buffer.sample_buffer(self.batch_size)
+        
         self.update_critic(states, actions, rewards, dones, next_states)
         self.update_actor(states)
         self.update_target()
@@ -244,18 +249,7 @@ class SAC(Algorithm):
             t.data.mul_(1.0 - self.tau)
             t.data.add_(self.tau * s.data)
 
-    '''def explore(self,state):
-       
-        state = torch.Tensor([state]).to(self.device)
-        with torch.no_grad():
-            action , log_pi = self.actor.sample(state)
-        return action.cpu().numpy()[0]
-
-    def exploit(self,state):
-        state = torch.Tensor([state]).to(self.device)
-        with torch.no_grad():
-            action = self.actor(state)
-        return action.cpu().numpy()[0]'''
+    
 
     def step(self, env, state, t, steps):
         t += 1
@@ -281,14 +275,33 @@ class SAC(Algorithm):
 
         return next_state, t
 
+    def generate_data(self, replay_buffer):
+        #D_model を定義
+        model_buffer = buffer.ReplayBuffer(replay_buffer.buff_size, replay_buffer.state_shape, replay_buffer.action_shape, device = self.device)
+        #startするバッチをbufferから取り出す
+        states,*_ = replay_buffer.sample_buffer(100)
+        states = states.cpu().numpy()
+        #modelを用いてステップする
+        for h in range(H_steps):
+            for b in range(100):
+                action , _ = self.explore(states[b])
+                next_state, reward = predict_next_state_and_reward(states[b], action, self.ensemble_models, self.device)
+                next_state = next_state.cpu().numpy()[0]
+                reward = reward.cpu().numpy()  
+                model_buffer.add(states[b], action , next_state , reward , 0.)
+                states[b] = next_state
+        return model_buffer
+
+
+
 class Trainer:
 
-    def __init__(self, env, env_test, algo, seed=0, num_steps=10**6, eval_interval=10**4, num_eval_episodes=3):
+    def __init__(self, env, env_test, algo, seed=0, num_steps=10**6, eval_interval=10**4, num_eval_episodes=3, model_interval = 10**3):
 
         self.env = env
         self.env_test = env_test
         self.algo = algo
-
+        #アンサンブルモデルを追加
         # 環境の乱数シードを設定する．
         self.env.seed(seed)
         self.env_test.seed(2**31-seed)
@@ -303,6 +316,9 @@ class Trainer:
         # 評価を行うエピソード数．
         self.num_eval_episodes = num_eval_episodes
 
+        self.model_interval = model_interval
+        set_log('data')
+        logging.info("H_steps %d algo_updata: %d" , H_steps, 5)
     def train(self):
         """ num_stepsステップの間，データ収集・学習・評価を繰り返す． """
 
@@ -321,7 +337,8 @@ class Trainer:
 
             # アルゴリズムが準備できていれば，1回学習を行う．
             if self.algo.is_update(steps):
-                self.algo.update()
+                
+                self.algo.update_sac()
 
             # 一定のインターバルで評価する．
             if steps % self.eval_interval == 0:
@@ -350,5 +367,37 @@ class Trainer:
         print(f'Num steps: {steps:<6}   '
               f'Return: {mean_return:<5.1f}   '
               )
+        logging.info('Num steps: %d Return: %.1f' , steps, mean_return)
 
+    def model_based_train(self):
+        """ num_stepsステップの間，データ収集・学習・評価を繰り返す． """
+
+        # 学習開始の時間
+        self.start_time = time()
+        # エピソードのステップ数．
+        t = 0
+
+        # 環境を初期化する．
+        state = self.env.reset()
+
+        for steps in range(1, self.num_steps + 1):
+            # 環境(self.env)，現在の状態(state)，現在のエピソードのステップ数(t)，今までのトータルのステップ数(steps)を
+            # アルゴリズムに渡し，状態・エピソードのステップ数を更新する．
+            state, t = self.algo.step(self.env, state, t, steps)
+            if steps % 10 == 0:
+                print(steps)
+            # アルゴリズムが準備できていれば，1回学習を行う．
+            if self.algo.is_update(steps):
+                for i in range(5):    
+                    self.algo.update()
+
+            if steps % self.model_interval == 0 :
+                print(steps)
+                for step in range(10):
+                    for i in range(5):
+                        self.algo.ensemble_models[i].update()
+            # 一定のインターバルで評価する．
+            if steps % self.eval_interval == 0:
+                self.evaluate(steps)
+    
     
