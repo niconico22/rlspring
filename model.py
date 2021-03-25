@@ -103,7 +103,7 @@ class Model(nn.Module):
             self.reward_model.modeloptimizer.step()
         loss = np.mean(losses)
         reward_loss = np.mean(reward_losses)
-        print(loss, reward_loss)
+        
         return loss,reward_loss
 
 

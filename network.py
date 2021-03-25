@@ -384,7 +384,7 @@ class Trainer:
             # 環境(self.env)，現在の状態(state)，現在のエピソードのステップ数(t)，今までのトータルのステップ数(steps)を
             # アルゴリズムに渡し，状態・エピソードのステップ数を更新する．
             state, t = self.algo.step(self.env, state, t, steps)
-            if steps % 10 == 0:
+            if steps % 100 == 0:
                 print(steps)
             # アルゴリズムが準備できていれば，1回学習を行う．
             if self.algo.is_update(steps):
@@ -392,7 +392,7 @@ class Trainer:
                     self.algo.update()
 
             if steps % self.model_interval == 0 :
-                print(steps)
+                
                 for step in range(10):
                     for i in range(5):
                         self.algo.ensemble_models[i].update()
