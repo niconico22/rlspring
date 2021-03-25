@@ -43,4 +43,4 @@ trainer = Trainer(
     eval_interval=EVAL_INTERVAL,
 )
 
-trainer.train()
+trainer.model_based_train()
