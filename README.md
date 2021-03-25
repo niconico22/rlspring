@@ -1,5 +1,5 @@
 # rlspring
-実行の方法は
+実行方法は
 
 python3 main.py [使用するcuda]
 
