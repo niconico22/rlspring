@@ -7,4 +7,5 @@ python3 main.py [使用するcuda]
 
 python3 main.py cuda:1
 
-となります.
+となります. またcloneして実行する場合データをログとして保存するため同じディレクトリにdatalogというフォルダを先に作るように
+してください.
