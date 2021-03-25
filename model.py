@@ -19,6 +19,7 @@ def predict_next_state_and_reward(state, action):
     return next_state, reward
 
 
+
 class Model(nn.Module):
     min_log_var = -5
     max_log_var = -1
